@@ -27,9 +27,11 @@ At first glance there seems to be a lot of magic to Meteor. Even Publishing data
 
 *options* - find options for the collection. i.e. Collection.find(selector, options);
 
-*dependant* - Another `SimplePublication` instance that is dependant on this instance.
+*dependant* - Another `SimplePublication` instance (or Array of them) that is dependant on this instance.
 
 *foreignKey* - Name of the document key that contains the reference to the related document.
+
+*inverted* - Boolean indicated if the relationship is inverted. i.e. Many to One relations
 
 *alternateCollectionName* - String containing the collection name to publish documents to. Useful if you want to publish documents from one collection to a different one on the client side.
 
@@ -40,6 +42,67 @@ Kicks off the publication and all dependant publications recursively.
 ####Method - `SimplePublication.stop()`####
 
 Stop the publication and all dependant publications recursively.
+
+##Examples##
+
+```javascript
+Meteor.publish('simplePostsExample', function () {
+    var publication = new SimplePublication({
+        subHandle:this,
+        collection:Posts,
+        options:{
+            sort:{date:-1, limit:10}
+        },
+        dependant: new SimplePublication({
+            subHandle:this,
+            collection:Meteor.users,
+            foreignKey:"userId",
+            inverted:true
+        })
+
+    });
+
+    publication.observe();
+
+    this.onStop(function () {
+        publication.stop();
+    });
+});
+```
+
+```javascript
+Meteor.publish('complexPostsExample', function () {
+    var usersPublication = new SimplePublication({
+            subHandle:this,
+            collection:Meteor.users,
+            foreignKey:"userId",
+            inverted:true
+    });
+
+    var postCommentsPublication = new SimplePublication({
+            subHandle:this,
+            collection:PostComments,
+            foreignKey:"postId",
+            dependant:usersPublication
+    });
+
+    var publication = new SimplePublication({
+        subHandle:this,
+        collection:Posts,
+        options:{
+            sort:{date:-1, limit:10}
+        },
+        dependant: [usersPublication, postCommentsPublication]
+
+    });
+
+    publication.observe();
+
+    this.onStop(function () {
+        publication.stop();
+    });
+});
+```
 
 ##Limitations##
 
