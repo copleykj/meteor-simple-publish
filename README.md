@@ -9,7 +9,8 @@ At first glance there seems to be a lot of magic to Meteor. Even Publishing data
 ##Features##
 
 - Simple API
-- Proper clean-up of cursor observers
+- Avoids wasting valuable cpu resources by only starting the minimum number of observers
+- Proper clean-up of cursor observers to avoid memory leaks in you publications
 - Proper removal of related documents when a document is removed.
 - Avoids adding or removing the same record repeatedly to mitigate [Meteor issue #944](https://github.com/meteor/meteor/issues/944).
 
@@ -35,13 +36,13 @@ At first glance there seems to be a lot of magic to Meteor. Even Publishing data
 
 *alternateCollectionName* - String containing the collection name to publish documents to. Useful if you want to publish documents from one collection to a different one on the client side.
 
-####Method - `SimplePublication.observe()`####
+####Method - `SimplePublication.start()`####
 
-Kicks off the publication and all dependant publications recursively.
+Kicks off the publication and all dependant publications recursively. Call this once on a top level publication. All dependant publications will be started by their parent publication.
 
 ####Method - `SimplePublication.stop()`####
 
-Stop the publication and all dependant publications recursively.
+Stop the publication and all dependant publications recursively. This is automatically called when the subscription stops, but can be used if you need to stop the publications before the subscription stops.
 
 ##Examples##
 
@@ -60,13 +61,9 @@ Meteor.publish('simplePostsExample', function () {
             inverted:true
         })
 
-    });
+    }).start();
 
-    publication.observe();
 
-    this.onStop(function () {
-        publication.stop();
-    });
 });
 ```
 
@@ -94,19 +91,10 @@ Meteor.publish('complexPostsExample', function () {
         },
         dependant: [usersPublication, postCommentsPublication]
 
-    });
+    }).start();
 
-    publication.observe();
-
-    this.onStop(function () {
-        publication.stop();
-    });
 });
 ```
-
-##Limitations##
-
-**Dependant Document Changes** - Currently deciding how to implement changes to dependent documents. Pull Requests are welcome if you wanna take a stab at it.
 
 ##License##
 [MIT License](http://opensource.org/licenses/MIT)

@@ -7,129 +7,188 @@ SimplePublication = function(options){
         throw new Error("Publications need a collection to get documents from.");
     }
 
-    this.subHandle = options.subHandle;
-    this.collection = options.collection;
+    //These properties need defaults before we extend;
+    this.selector = {};
+    this.options = {};
 
-    this.selector = options.selector || {};
-    this.options = options.options || {};
+    //set up properties by extending the options object
+    _(this).extend(options);
 
-    this.dependant = options.dependant;
-    this.foreignKey = options.foreignKey;
-    this.inverted = options.inverted;
-
-    this.alternateCollectionName = options.alternateCollectionName;
-
+    //finally set properties we'll use internally and don't want set from outside.
     this.handles = {};
+    this.observing = {};
     this.published = {};
+
 };
 
-SimplePublication.prototype = {
-    setPublished: function(foreignId, documentId){
-        if(!this.published[foreignId]){
-            this.published[foreignId] = {};
-        }
-        this.published[foreignId][documentId] = true;
-    },
-    setUnpublished: function(foreignId, documentId){
-        if(this.published[foreignId]){
-            delete this.published[foreignId][documentId];
-        }
-    },
-    observe: function(document) {
-        var self = this;
-        var selector = self.selector;
-        var documentId;
 
-        documentId = document ? document._id : "top";
+SimplePublication.prototype = {
+    start: function(document) {
+        var self = this;
+        var selector;
+
+        var foreignId = document ? document._id : "top";
+
+        if(self.incrementTimesObserved(foreignId)){
+            selector = self.getQueryKeyRelationSelector(document);
+
+            self.handles[foreignId] = self.collection.find(selector, self.options).observe({
+                added: function (document) {
+                    self.added(document, foreignId);
+                },
+                changed: function (newDocument, oldDocument) {
+                    self.changed(newDocument, oldDocument, foreignId);
+                },
+                removed: function (document) {
+                    self.removed(document._id, foreignId);
+                },
+            });
+
+        }
+
+        if(!document){
+            self.attachSubscriptionStopFunction();
+        }
+
+    },
+    stop: function(documentId) {
+        var self = this;
+
+        var foreignId = documentId || "top";
+
+        if(self.decrementTimesObserved(foreignId)){
+            self.handles[foreignId].stop();
+
+            delete self.handles[foreignId];
+
+            _(self.published[foreignId]).each(function(publishedId) {
+                self.removed(publishedId, foreignId);
+            });
+        }
+
+    },
+    added: function(document, parentId) {
+        var self = this;
+        var collectionName = self.getPublisableCollectionName();
+        var stopPublish = false;
+
+        if(self.addHook){
+            stopPublish = self.addHook.call(this, document, parentId);
+        }
+
+        if(!stopPublish){
+            if(self.shouldPublish(document._id, parentId)){
+                self.subHandle.added(collectionName, document._id, document);
+
+                self.startDependants(document);
+            }
+        }
+
+    },
+    changed: function(newDocument, oldDocument, parentId) {
+        var self = this;
+        var collectionName = self.getPublisableCollectionName();
+
+        self.subHandle.changed(collectionName, oldDocument._id, newDocument);
+    },
+    removed: function(documentId, parentId) {
+        var self = this;
+        var collectionName =  self.getPublisableCollectionName();
+
+        if(self.shouldUnpublish(documentId, parentId)){
+            self.subHandle.removed(collectionName, documentId);
+
+            self.stopDependants(documentId);
+        }
+    },
+    startDependants: function(document){
+        var self = this;
+        if(self.dependant){
+            if(_(self.dependant).isArray()){
+                _(self.dependant).each(function(dependant) {
+                    dependant.start(document);
+                });
+            }else{
+                self.dependant.start(document);
+            }
+        }
+    },
+    stopDependants: function(documentId){
+        var self = this;
+        if(self.dependant){
+            if(_(self.dependant).isArray()){
+                _(self.dependant).each(function(dependant) {
+                    dependant.stop(documentId);
+                });
+            }else{
+                self.dependant.stop(documentId);
+            }
+        }
+    },
+    shouldPublish: function(documentId, parentId){
+        if(!this.published[documentId]){
+            this.published[documentId] = [];
+        }
+
+        this.published[documentId].push(parentId);
+
+        if(this.published[documentId].length === 1){
+            return true;
+        }
+    },
+    shouldUnpublish: function(documentId, parentId){
+        var index = this.published[documentId].indexOf(parentId);
+
+        if(index !== -1){
+            this.published[documentId].splice(index, 1);
+        }
+
+        if(this.published[documentId].length === 0){
+            return true;
+        }
+    },
+    incrementTimesObserved: function(documentId) {
+        var self = this;
+
+        if(!self.observing[documentId]){
+            self.observing[documentId] = 1;
+            return true;
+        }
+        self.observing[documentId] += 1;
+    },
+    decrementTimesObserved: function(documentId) {
+        var self = this;
+
+        if(self.observing[documentId]){
+            self.observing[documentId] -= 1;
+
+            if(!self.observing[documentId]){
+                return true;
+            }
+        }
+    },
+    getPublisableCollectionName: function (){
+        return this.alternateCollectionName || this.collection._name;
+    },
+    getQueryKeyRelationSelector: function(document){
+        var self = this;
+        var selector = _({}).extend(self.selector);
 
         if(self.foreignKey){
             if(self.inverted){
                 selector["_id"] = document[self.foreignKey];
             }else{
-                selector[self.foreignKey] = documentId;
+                selector[self.foreignKey] = document._id;
             }
         }
 
-        self.handles[documentId] = self.collection.find(selector, self.options).observe({
-            added: function (document) {
-                self.added(document._id, document, documentId);
-            },
-            changed: function (newDocument, oldDocument) {
-                self.changed(oldDocument._id, newDocument);
-            },
-            removed: function (document) {
-                self.removed(document._id, documentId);
-            }
-        });
-
+        return selector;
     },
-    added: function(documentId, document, foreignId) {
-        var name = this.alternateCollectionName || this.collection._name;
-        if(! (this.subHandle._documents[name] && this.subHandle._documents[name][documentId]) ){
-            this.subHandle.added(name, documentId, document);
-            this.setPublished(foreignId, documentId);
-
-            if(this.dependant){
-                if(_(this.dependant).isArray()){
-                    _(this.dependant).each(function(dependant) {
-                         dependant.observe(document);
-                    });
-                }else{
-                    this.dependant.observe(document);
-                }
-            }
-        }
-    },
-    changed: function(documentId, document) {
-        var name = this.alternateCollectionName || this.collection._name;
-        if(this.subHandle._documents[name] && this.subHandle._documents[name][documentId]){
-            this.subHandle.changed(name, documentId, document);
-        }
-    },
-    removed: function(documentId, foreignId) {
-        var name = this.alternateCollectionName || this.collection._name;
-        if(this.subHandle._documents[name] && this.subHandle._documents[name][documentId]){
-            this.subHandle.removed(name, documentId);
-            this.setUnpublished(foreignId, documentId);
-
-            if(this.dependant){
-                if(_(this.dependant).isArray()){
-                    _(this.dependant).each(function(dependant) {
-                        dependant.stop(documentId);
-                    });
-                }else{
-                    this.dependant.stop(documentId);
-                }
-            }
-        }
-    },
-    stop: function(documentId){
+    attachSubscriptionStopFunction: function(){
         var self = this;
-
-        if(documentId){
-            if(self.handles[documentId]){
-                _(self.published[documentId]).each(function(value, key) {
-                    self.removed(key, documentId);
-                });
-
-                self.handles[documentId].stop();
-                delete self.handles[documentId];
-            }
-        }else{
-            _(self.published).each(function(documents, key, published) {
-                _(documents).each( function(value, key) {
-                    self.removed(key, documentId);
-                });
-            });
-
-            _(self.handles).each(function(handle, key, handles) {
-                handle.stop();
-                delete handles[key];
-            });
-
-            if(self.dependant){
-                self.dependant.stop();
-            }
-        }
+        self.subHandle.onStop(function () {
+            self.stop();
+        });
+        self.subHandle.ready();
     }
 };
