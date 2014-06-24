@@ -18,7 +18,7 @@ SimplePublication = function(options){
     this.handles = {};
     this.observing = {};
     this.published = {};
-
+    this.parents = {};
 };
 
 
@@ -126,26 +126,41 @@ SimplePublication.prototype = {
         }
     },
     shouldPublish: function(documentId, parentId){
-        if(!this.published[documentId]){
-            this.published[documentId] = [];
+        var shouldPublish;
+
+        if(typeof this.published[parentId] === "undefined"){
+            this.published[parentId] = [];
         }
 
-        this.published[documentId].push(parentId);
-
-        if(this.published[documentId].length === 1){
-            return true;
+        if(_(this.parents[documentId]).isEmpty()){
+            this.parents[documentId] = [];
+            shouldPublish = true;
         }
+
+        if(this.published[parentId].indexOf(documentId) === -1){
+            this.published[parentId].push(documentId);
+        }
+
+        this.parents[documentId].push(parentId);
+
+
+        return shouldPublish;
+        
     },
     shouldUnpublish: function(documentId, parentId){
-        var index = this.published[documentId].indexOf(parentId);
+        var index = this.parents[documentId].indexOf(parentId);
 
         if(index !== -1){
-            this.published[documentId].splice(index, 1);
+            this.parents[documentId].splice(index, 1);
+
+            if(this.parents[documentId].indexOf(parentId) === -1){
+                index = this.published[parentId].indexOf(documentId);
+                this.published[parentId].splice(index, 1);
+
+                return true;
+            }
         }
 
-        if(this.published[documentId].length === 0){
-            return true;
-        }
     },
     incrementTimesObserved: function(documentId) {
         var self = this;
