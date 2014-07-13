@@ -32,6 +32,7 @@ SimplePublication.prototype = {
         if(self.incrementTimesObserved(foreignId)){
             selector = self.getQueryKeyRelationSelector(document);
 
+
             self.handles[foreignId] = self.collection.find(selector, self.options).observe({
                 added: function (document) {
                     self.added(document, foreignId);
@@ -211,7 +212,27 @@ SimplePublication.prototype = {
         var self = this;
         self.subHandle.onStop(function () {
             self.stop();
+            self.stopOpenHandles();
         });
         self.subHandle.ready();
+    },
+    stopOpenHandles: function(){
+        var self = this;
+        var size = _(self.handles).size();
+
+        if(size > 0){
+            _(self.handles).each( function(handle) {
+                handle.stop();
+            });
+        }
+        if(self.dependant){
+            if(_(self.dependant).isArray()){
+                _(self.dependant).each(function(dependant) {
+                    dependant.stopOpenHandles();
+                });
+            }else{
+                self.dependant.stopOpenHandles();
+            }
+        }
     }
 };
