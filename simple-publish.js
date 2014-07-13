@@ -191,9 +191,17 @@ SimplePublication.prototype = {
 
         if(self.foreignKey){
             if(self.inverted){
-                selector["_id"] = document[self.foreignKey];
+                if(self.primaryKey){
+                    selector[self.primaryKey] = document[self.foreignKey];
+                }else{
+                    selector["_id"] = document[self.foreignKey];
+                }
             }else{
-                selector[self.foreignKey] = document._id;
+                if(self.primaryKey){
+                    selector[self.foreignKey] = document[self.primaryKey];
+                }else{
+                    selector[self.foreignKey] = document["_id"];
+                }
             }
         }
 
