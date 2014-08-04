@@ -150,11 +150,13 @@ SimplePublication.prototype = {
     },
     shouldUnpublish: function(documentId, parentId){
         var index = this.parents[documentId].indexOf(parentId);
+        var collectionName = this.getPublisableCollectionName();
 
         if(index !== -1){
             this.parents[documentId].splice(index, 1);
 
-            if(this.parents[documentId].indexOf(parentId) === -1){
+            if(this.parents[documentId].indexOf(parentId) === -1 && this.subHandle._documents[collectionName][documentId]){
+                
                 index = this.published[parentId].indexOf(documentId);
                 this.published[parentId].splice(index, 1);
 
