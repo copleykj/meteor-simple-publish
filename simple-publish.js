@@ -72,13 +72,13 @@ SimplePublication.prototype = {
         var self = this;
         var collectionName = self.getPublisableCollectionName();
         var stopPublish = false;
-        
-        if(self.shouldPublish(document._id, parentId)){
-            if(self.addedHook){
-                stopPublish = self.addedHook.call(this, document, parentId);
-            }
 
-            if(!stopPublish){
+        if(self.addedHook){
+            stopPublish = self.addedHook.call(this, document, parentId);
+        }
+        
+        if(!stopPublish){
+            if(self.shouldPublish(document._id, parentId)){
                 self.subHandle.added(collectionName, document._id, document);
 
                 self.startDependants(document);
@@ -91,16 +91,18 @@ SimplePublication.prototype = {
         var collectionName = self.getPublisableCollectionName();
 
         if(self.changedHook){
-            stopChange = self.changedHook.call(this, newDocument, oldDocument, parentId);
+            self.changedHook.call(this, newDocument, oldDocument, parentId);
         }
-
-        if(!stopChange){
-            self.subHandle.changed(collectionName, oldDocument._id, newDocument);
-        }
+        
+        self.subHandle.changed(collectionName, oldDocument._id, newDocument);
     },
     removed: function(documentId, parentId) {
         var self = this;
         var collectionName =  self.getPublisableCollectionName();
+
+        if(self.removedHook){
+            self.removedHook.call(this, document, parentId);
+        }
 
         if(self.shouldUnpublish(documentId, parentId)){
             self.subHandle.removed(collectionName, documentId);
@@ -181,11 +183,9 @@ SimplePublication.prototype = {
 
         if(!observing[documentId]){
             observing[documentId] = 1;
-            console.log("increment", observing[documentId]);
             return true;
         }
         observing[documentId] += 1;
-        console.log("increment", observing[documentId]);
     },
     decrementTimesObserved: function(documentId) {
         var self = this;
@@ -195,7 +195,6 @@ SimplePublication.prototype = {
             observing[documentId] -= 1;
 
             if(!observing[documentId]){
-                console.log("increment", observing[documentId]);
                 return true;
             }
         }
