@@ -16,8 +16,8 @@ SimplePublication = function(options){
 
     //finally set properties we'll use internally and don't want set from outside.
     this.handles = {};
-    this.observing = {};
     this.published = {};
+    this.subHandle.observing = this.subHandle.obeserving || {};
     this.subHandle.parents = this.subHandle.parents || {};
 };
 
@@ -29,7 +29,7 @@ SimplePublication.prototype = {
 
         var foreignId = document ? document._id : "top";
 
-        if(!self.handles[foreignId]){
+        if(self.incrementTimesObserved(foreignId)){
             selector = self.getQueryKeyRelationSelector(document);
 
 
@@ -57,7 +57,7 @@ SimplePublication.prototype = {
 
         var foreignId = documentId || "top";
 
-        if(self.handles[foreignId]){
+        if(self.decrementTimesObserved(foreignId)){
             self.handles[foreignId].stop();
 
             delete self.handles[foreignId];
@@ -72,13 +72,13 @@ SimplePublication.prototype = {
         var self = this;
         var collectionName = self.getPublisableCollectionName();
         var stopPublish = false;
+        
+        if(self.shouldPublish(document._id, parentId)){
+            if(self.addedHook){
+                stopPublish = self.addedHook.call(this, document, parentId);
+            }
 
-        if(self.addHook){
-            stopPublish = self.addHook.call(this, document, parentId);
-        }
-
-        if(!stopPublish){
-            if(self.shouldPublish(document._id, parentId)){
+            if(!stopPublish){
                 self.subHandle.added(collectionName, document._id, document);
 
                 self.startDependants(document);
@@ -90,7 +90,13 @@ SimplePublication.prototype = {
         var self = this;
         var collectionName = self.getPublisableCollectionName();
 
-        self.subHandle.changed(collectionName, oldDocument._id, newDocument);
+        if(self.changedHook){
+            stopChange = self.changedHook.call(this, newDocument, oldDocument, parentId);
+        }
+
+        if(!stopChange){
+            self.subHandle.changed(collectionName, oldDocument._id, newDocument);
+        }
     },
     removed: function(documentId, parentId) {
         var self = this;
@@ -168,6 +174,31 @@ SimplePublication.prototype = {
             }
         }
 
+    },
+    incrementTimesObserved: function(documentId) {
+        var self = this;
+        var observing = self.subHandle.observing;
+
+        if(!observing[documentId]){
+            observing[documentId] = 1;
+            console.log("increment", observing[documentId]);
+            return true;
+        }
+        observing[documentId] += 1;
+        console.log("increment", observing[documentId]);
+    },
+    decrementTimesObserved: function(documentId) {
+        var self = this;
+        var observing = self.subHandle.observing;
+
+        if(observing[documentId]){
+            observing[documentId] -= 1;
+
+            if(!observing[documentId]){
+                console.log("increment", observing[documentId]);
+                return true;
+            }
+        }
     },
     getPublisableCollectionName: function (){
         return this.alternateCollectionName || this.collection._name;
