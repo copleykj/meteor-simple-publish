@@ -18,7 +18,7 @@ SimplePublication = function(options){
     this.handles = {};
     this.observing = {};
     this.published = {};
-    this.parents = {};
+    this.subHandle.parents = this.subHandle.parents || {};
 };
 
 
@@ -29,7 +29,7 @@ SimplePublication.prototype = {
 
         var foreignId = document ? document._id : "top";
 
-        if(self.incrementTimesObserved(foreignId)){
+        if(!self.handles[foreignId]){
             selector = self.getQueryKeyRelationSelector(document);
 
 
@@ -57,7 +57,7 @@ SimplePublication.prototype = {
 
         var foreignId = documentId || "top";
 
-        if(self.decrementTimesObserved(foreignId)){
+        if(self.handles[foreignId]){
             self.handles[foreignId].stop();
 
             delete self.handles[foreignId];
@@ -128,13 +128,14 @@ SimplePublication.prototype = {
     },
     shouldPublish: function(documentId, parentId){
         var shouldPublish;
+        var parents = this.subHandle.parents;
 
         if(typeof this.published[parentId] === "undefined"){
             this.published[parentId] = [];
         }
 
-        if(_(this.parents[documentId]).isEmpty()){
-            this.parents[documentId] = [];
+        if(_(parents[documentId]).isEmpty()){
+            parents[documentId] = [];
             shouldPublish = true;
         }
 
@@ -142,20 +143,23 @@ SimplePublication.prototype = {
             this.published[parentId].push(documentId);
         }
 
-        this.parents[documentId].push(parentId);
+        parents[documentId].push(parentId);
 
 
         return shouldPublish;
         
     },
     shouldUnpublish: function(documentId, parentId){
-        var index = this.parents[documentId].indexOf(parentId);
-        var collectionName = this.getPublisableCollectionName();
+        var parents = this.subHandle.parents;
+        var index = parents[documentId].indexOf(parentId);
+        var collectionName;
 
         if(index !== -1){
-            this.parents[documentId].splice(index, 1);
+            collectionName = this.getPublisableCollectionName();
 
-            if(this.parents[documentId].indexOf(parentId) === -1 && this.subHandle._documents[collectionName][documentId]){
+            parents[documentId].splice(index, 1);
+
+            if(parents[documentId].indexOf(parentId) === -1){
                 
                 index = this.published[parentId].indexOf(documentId);
                 this.published[parentId].splice(index, 1);
@@ -164,26 +168,6 @@ SimplePublication.prototype = {
             }
         }
 
-    },
-    incrementTimesObserved: function(documentId) {
-        var self = this;
-
-        if(!self.observing[documentId]){
-            self.observing[documentId] = 1;
-            return true;
-        }
-        self.observing[documentId] += 1;
-    },
-    decrementTimesObserved: function(documentId) {
-        var self = this;
-
-        if(self.observing[documentId]){
-            self.observing[documentId] -= 1;
-
-            if(!self.observing[documentId]){
-                return true;
-            }
-        }
     },
     getPublisableCollectionName: function (){
         return this.alternateCollectionName || this.collection._name;
