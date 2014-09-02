@@ -9,7 +9,10 @@ Package.describe({
 });
 
 Package.on_use(function (api) {
-	api.versionsFrom('0.9.0');
+
+	if(api.versionsFrom){
+		api.versionsFrom('0.9.0');
+	}
 
     api.use('underscore', 'server');
 
