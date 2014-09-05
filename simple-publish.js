@@ -15,6 +15,7 @@ SimplePublication = function(options){
     _(this).extend(options);
 
     //finally set properties we'll use internally and don't want set from outside.
+    this.uid = Meteor.uuid();
     this.handles = {};
     this.published = {};
     this.subHandle.observing = this.subHandle.obeserving || {};
@@ -28,23 +29,24 @@ SimplePublication.prototype = {
         var selector;
 
         var foreignId = document ? document._id : "top";
+        var handleId = self.getHandleId(foreignId);
 
-        if(self.incrementTimesObserved(foreignId)){
+        if(self.fallThrough(foreignId) || self.incrementTimesObserved(foreignId)){
             selector = self.getQueryKeyRelationSelector(document);
 
-
-            self.handles[foreignId] = self.collection.find(selector, self.options).observe({
-                added: function (document) {
-                    self.added(document, foreignId);
-                },
-                changed: function (newDocument, oldDocument) {
-                    self.changed(newDocument, oldDocument, foreignId);
-                },
-                removed: function (document) {
-                    self.removed(document._id, foreignId);
-                },
-            });
-
+            if(!self.handles[handleId]){
+                self.handles[handleId] = self.collection.find(selector, self.options).observe({
+                    added: function (document) {
+                        self.added(document, foreignId);
+                    },
+                    changed: function (newDocument, oldDocument) {
+                        self.changed(newDocument, oldDocument, foreignId);
+                    },
+                    removed: function (document) {
+                        self.removed(document._id, foreignId);
+                    },
+                });
+            }
         }
 
         if(!document){
@@ -56,11 +58,12 @@ SimplePublication.prototype = {
         var self = this;
 
         var foreignId = documentId || "top";
+        var handleId = self.getHandleId(foreignId);
 
         if(self.decrementTimesObserved(foreignId)){
-            self.handles[foreignId].stop();
+            self.handles[handleId] && self.handles[handleId].stop();
 
-            delete self.handles[foreignId];
+            delete self.handles[handleId];
 
             _(self.published[foreignId]).each(function(publishedId) {
                 self.removed(publishedId, foreignId);
@@ -70,13 +73,13 @@ SimplePublication.prototype = {
     },
     added: function(document, parentId) {
         var self = this;
-        var collectionName = self.getPublisableCollectionName();
+        var collectionName = self.getPublishableCollectionName();
         var stopPublish = false;
 
         if(self.addedHook){
             stopPublish = self.addedHook.call(this, document, parentId);
         }
-        
+
         if(!stopPublish){
             if(self.shouldPublish(document._id, parentId)){
                 self.subHandle.added(collectionName, document._id, document);
@@ -88,17 +91,17 @@ SimplePublication.prototype = {
     },
     changed: function(newDocument, oldDocument, parentId) {
         var self = this;
-        var collectionName = self.getPublisableCollectionName();
+        var collectionName = self.getPublishableCollectionName();
 
         if(self.changedHook){
             self.changedHook.call(this, newDocument, oldDocument, parentId);
         }
-        
+
         self.subHandle.changed(collectionName, oldDocument._id, newDocument);
     },
     removed: function(documentId, parentId) {
         var self = this;
-        var collectionName =  self.getPublisableCollectionName();
+        var collectionName =  self.getPublishableCollectionName();
 
         if(self.removedHook){
             self.removedHook.call(this, document, parentId);
@@ -155,7 +158,7 @@ SimplePublication.prototype = {
 
 
         return shouldPublish;
-        
+
     },
     shouldUnpublish: function(documentId, parentId){
         var parents = this.subHandle.parents;
@@ -163,12 +166,12 @@ SimplePublication.prototype = {
         var collectionName;
 
         if(index !== -1){
-            collectionName = this.getPublisableCollectionName();
+            collectionName = this.getPublishableCollectionName();
 
             parents[documentId].splice(index, 1);
 
             if(parents[documentId].indexOf(parentId) === -1){
-                
+
                 index = this.published[parentId].indexOf(documentId);
                 this.published[parentId].splice(index, 1);
 
@@ -176,6 +179,14 @@ SimplePublication.prototype = {
             }
         }
 
+    },
+    fallThrough: function(documentId) {
+        var self = this;
+
+        if(self.straightPublish){
+            self.incrementTimesObserved(documentId);
+            return true;
+        }
     },
     incrementTimesObserved: function(documentId) {
         var self = this;
@@ -199,7 +210,11 @@ SimplePublication.prototype = {
             }
         }
     },
-    getPublisableCollectionName: function (){
+    getHandleId: function(foreignId) {
+        var self = this;
+        return foreignId + self.uid;
+    },
+    getPublishableCollectionName: function (){
         return this.alternateCollectionName || this.collection._name;
     },
     getQueryKeyRelationSelector: function(document){
@@ -239,6 +254,7 @@ SimplePublication.prototype = {
         if(size > 0){
             _(self.handles).each( function(handle) {
                 handle.stop();
+                delete handle;
             });
         }
         if(self.dependant){
