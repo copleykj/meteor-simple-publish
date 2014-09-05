@@ -3,7 +3,7 @@ Package.describe({
 
     summary: "Beautifully Simple Reactive Publications",
 
-    version: "1.0.2",
+    version: "1.0.3",
 
     git: "https://github.com/copleykj/meteor-simple-publish"
 });
